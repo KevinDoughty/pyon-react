@@ -1,8 +1,8 @@
 {
   "name": "pyon-react",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Animation layers for React (a work in progress)",
-  "main": "react-pyon.js",
+  "main": "pyon-react.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -24,8 +24,8 @@
   },
   "homepage": "https://github.com/KevinDoughty/pyon-react#readme",
   "dependencies": {
-    "pyon": "^0.0.7",
-    "pyon-style": "^0.0.2",
+    "pyon": "^0.0.8",
+    "pyon-style": "^0.0.3",
     "react": "^0.14.6",
     "react-dom": "^0.14.6"
   },
