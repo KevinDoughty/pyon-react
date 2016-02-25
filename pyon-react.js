@@ -26,10 +26,10 @@ THE SOFTWARE.
   var hasRequire = (typeof require !== "undefined");
   
   var React = root.React || hasRequire && require("react");
-  if (typeof React === "undefined") throw new Error("React Pyon requires React. If you are using script tags React must come first.");
+  if (typeof React === "undefined") throw new Error("Pyon React requires React. If you are using script tags React must come first.");
   
   var Pyon = root.Pyon || hasRequire && require("pyon");
-  if (typeof Pyon === "undefined") throw new Error("React Pyon requires regular Pyon. If you are using script tags Pyon must come first.");
+  if (typeof Pyon === "undefined") throw new Error("Pyon React requires regular Pyon. If you are using script tags Pyon must come first.");
 
   function isFunction(w) {
     return w && {}.toString.call(w) === "[object Function]";

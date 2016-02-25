@@ -1,0 +1,33 @@
+{
+  "name": "pyon-react",
+  "version": "0.0.1",
+  "description": "Animation layers for React (a work in progress)",
+  "main": "react-pyon.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KevinDoughty/pyon-react.git"
+  },
+  "keywords": [
+    "relative",
+    "additive",
+    "animation",
+    "layer",
+    "delta"
+  ],
+  "author": "Kevin Doughty",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/KevinDoughty/pyon-react/issues"
+  },
+  "homepage": "https://github.com/KevinDoughty/pyon-react#readme",
+  "dependencies": {
+    "pyon": "^0.0.7",
+    "pyon-style": "^0.0.2",
+    "react": "^0.14.6",
+    "react-dom": "^0.14.6"
+  },
+  "devDependencies": {}
+}
