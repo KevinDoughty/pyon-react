@@ -28,8 +28,16 @@ THE SOFTWARE.
   var React = root.React || hasRequire && require("react");
   if (typeof React === "undefined") throw new Error("Pyon React requires React. If you are using script tags React must come first.");
   
+  //var ReactDOM = root.ReactDOM || hasRequire && require("react-dom");
+  //if (typeof ReactDOM === "undefined") throw new Error("Pyon React requires ReactDOM. If you are using script tags React must come first.");
+  
+  
   var Pyon = root.Pyon || hasRequire && require("pyon");
   if (typeof Pyon === "undefined") throw new Error("Pyon React requires regular Pyon. If you are using script tags Pyon must come first.");
+
+  var PyonStyle = root.PyonStyle || hasRequire && require("pyon-style");
+//  if (typeof PyonStyle === "undefined") throw new Error("Pyon React requires Pyon Style. If you are using script tags Pyon must come first.");
+// This will fail silently, maybe I should require it.
 
   function isFunction(w) {
     return w && {}.toString.call(w) === "[object Function]";
@@ -47,23 +55,27 @@ THE SOFTWARE.
         this.childInstance = null;
         this.debugMounted = false;
         this.animationDict = {};
-        var component = this;
-        var layer = this.layer = this.propValues(this.props);//{};
-        var delegate = this.delegate = {
+        var owner = this;
         
-          animationForKey: function(key,value) {
-            return component.manualAnimationForKey(key,value);
+        this.layer = this.propValues(this.props);//{};
+        
+        this.delegate = {
+          animationForKey: function(key,value,target) {
+            var animationForKey;
+            if (owner.childInstance) animationForKey = owner.childInstance.animationForKey.bind(owner.childInstance);
+            var animation;
+            if (isFunction(animationForKey)) animation = animationForKey(key,value,target);
+            return animation;
           },
-          
           render: function() { // This render gets called on animation
-            Pyon.beginTransaction({owner: component}); // FIXME: can be overwritten by manually created transactions. Does not have a problem with batching because not called from a React synthetic event
+            Pyon.beginTransaction({owner: owner}); // FIXME: can be overwritten by manually created transactions. Does not have a problem with batching because not called from a React synthetic event
             if (this.debugMounted) this.setState({});
             //else throw new Error ("delegate render but not mounted"); // Happens a lot, because of work done in componentWillMount!
             Pyon.commitTransaction();
           }.bind(this),
         }
         
-        Pyon.pyonify(this,layer,delegate);
+        //Pyon.pyonify(this,this.layer,this.delegate);
         
       },
       shouldComponentUpdate: function(nextProps,nextState) {
@@ -74,76 +86,48 @@ THE SOFTWARE.
         if (settings && settings.owner && settings.owner !== this) result = false;
         return result;
       },
-      animationForKey: function(key,value) { // For this to get called in ES5: var AnimatableComponent = React.createFactory(PyonReact.reactify(AnimatableComponentClass));
-        // FIXME: This gets called when setting values on presentationLayer, because componentWillReceiveProps
-        var animation = null;
-        var childInstance = this.childInstance;
-        if (childInstance && isFunction(childInstance.animationForKey)) animation = childInstance.animationForKey(key,value);
-        if (typeof animation === "undefined" || animation === null) animation = this.animationDict[key]; // return false in animationForKey to not use default
-        if (animation === false) return null; // allows false to stop lookup
-        return animation;
-      },
-      manualAnimationForKey: function(key,value) { // For this to get called in ES5: var AnimatableComponent = React.createFactory(PyonReact.reactify(AnimatableComponentClass));
-        var animation = null;
-        var childInstance = this.childInstance;
-        if (childInstance && isFunction(childInstance.animationForKey)) animation = childInstance.animationForKey(key,value);
-        if (typeof animation === "undefined" || animation === null) animation = this.animationDict[key]; // return false in animationForKey to not use default
-        if (animation === false) return null; // allows false to stop lookup
-        return animation;
-      },
-      propValues: function(props) { // strip out change descriptions and provide just the values
+      
+      propValues: function(props) {
         var values = {};
         Object.keys(props).forEach( function(key) {
-          var prop = props[key];
-          var value = prop;
-          var isObject = (prop !== null && typeof prop === "object");
-          if (isObject && typeof prop.value !== "undefined") value = prop.value;
-          values[key] = value;
+          if (key !== "children") { // Opaque. Strip out children, which breaks horribly: Uncaught Invariant Violation: Objects are not valid as a React child (found: object with keys {}). If you meant to render a collection of children, use an array instead or wrap the object using createFragment(object) from the React add-ons. Check the render method
+            var prop = props[key];
+            var value = prop;
+            var isObject = (prop !== null && typeof prop === "object");
+            if (isObject && typeof prop.value !== "undefined") value = prop.value;
+            values[key] = value;
+          }
         });
         return values;
       },
       processProps: function(props) {
-        var layer = this.layer;
         Object.keys(props).forEach( function(key) {
-          var transition;
-          var prop = props[key];
-          var value = prop;
-          var isObject = (prop !== null && typeof prop === "object");
-          if (isObject && typeof prop.value !== "undefined") { // detect if a change description
-            value = prop.value;
-            transition = prop.animation;
-            if (prop.transition) transition = prop.transition;
-          }
-          if (typeof transition === "undefined") transition = null;
-          this.animationDict[key] = transition;
-          
-          this.registerAnimatableProperty(key); // Shoe
-          
-          var oldProp = this.props[key];
-          var oldValue = oldProp;
-          var isObjectOld = (oldProp !== null && typeof oldProp === "object");
-          if (isObjectOld && typeof oldProp.value !== "undefined") oldValue = oldProp.value;
-          //var sort;
-          //if (animation) sort = animation.sort;
-          //if (typeof layer[key] === "undefined" || (sort && !sort(value,oldValue)) || (!sort && value !== oldValue)) {
-            layer[key] = value;
-          //}
-          var manualImplicit = false;
-          if (manualImplicit) {
-            if (oldValue !== value) {
-              var name; // I need this. must store in change description
-              var animation = this.manualAnimationForKey(key,value);
-              if (animation) { // have to reproduce everything from Pyon setValueForKey because it's complicated
-                if (animation.property === null || typeof animation.property === "undefined") animation.property = key;
-                if (animation.from === null || typeof animation.from === "undefined") {
-                  if (animation.blend === "absolute") animation.from = this.presentationLayer[property]; // use presentation layer
-                  else animation.from = oldValue;
-                }
-                if (animation.to === null || typeof animation.to === "undefined") animation.to = value;
-              
-              this.addAnimation(animation,name); // Shoe
-              }
+          if (key !== "children") { // Opaque. No animation for children, at least for now: Uncaught Invariant Violation: Objects are not valid as a React child (found: object with keys {}). If you meant to render a collection of children, use an array instead or wrap the object using createFragment(object) from the React add-ons. Check the render method
+            var transition;
+            var prop = props[key];
+            var value = prop;
+            var isObject = (prop !== null && typeof prop === "object");
+            if (isObject && typeof prop.value !== "undefined") { // detect if a change description
+              value = prop.value;
+              transition = prop.animation;
+              if (prop.transition) transition = prop.transition;
             }
+            if (typeof transition === "undefined") transition = null;
+            this.animationDict[key] = transition;
+            
+            //this.registerAnimatableProperty(key); // Shoe
+            if (this.childInstance) this.childInstance.registerAnimatableProperty(key); // Shoe
+            if (this.delegate && this.delegate.registerAnimatableProperty) this.delegate.registerAnimatableProperty(key);
+            
+            var oldProp = this.props[key];
+            var oldValue = oldProp;
+            var isObjectOld = (oldProp !== null && typeof oldProp === "object");
+            if (isObjectOld && typeof oldProp.value !== "undefined") oldValue = oldProp.value;
+            //var sort;
+            //if (animation) sort = animation.sort;
+            //if (typeof this.layer[key] === "undefined" || (sort && !sort(value,oldValue)) || (!sort && value !== oldValue)) {
+            this.layer[key] = value;
+            //}
           }
         }.bind(this));
       },
@@ -195,23 +179,30 @@ THE SOFTWARE.
       componentDidMount: function() {
         this.debugMounted = true;
       },
-      render: function() { // this.props has change descriptions instead of actual values
-        var propValues = this.propValues(this.props);
-        var presentationLayer = this.presentationLayer;
-        var output = this.propValues(this.presentationLayer);
-        var modelLayer = this.modelLayer;
-        var innerComponentRef = output.ref;
+      render: function() { //
+        var modelLayer = this.layer;
+        var presentationLayer = this.delegate.presentationLayer || modelLayer;
         
-        if (false) Object.keys(presentationLayer).forEach( function(key) {
-          output[key] = presentationLayer[key];
-        });
+        var output = this.propValues(presentationLayer);
         
         var owner = this;
-        var ref = function(component) { // Happens often. Might require format: var CarouselPane = React.createFactory(PyonReact.reactify(CarouselPaneClass));
+        var layer = modelLayer;
+        var delegate = this.delegate;
+        
+        var reference = function(component) { // Might require format: var CarouselPane = React.createFactory(PyonReact.reactify(CarouselPaneClass));
           if (component && owner.childInstance !== component) {
             owner.childInstance = component;
             
-            var swizzleWillReceive = true;
+            var autoAnimateRefs = false;
+            if (autoAnimateRefs && PyonStyle) {
+              var refKeys = Object.keys(component.refs);
+              refKeys.forEach( function(item,index) {
+                 var element = component.refs[item];
+                 PyonStyle.setDelegate(element, owner);
+              });
+            }
+
+            var swizzleWillReceive = false;
             if (swizzleWillReceive) {
               var originalWillReceiveProps = component.componentWillReceiveProps;
               if (originalWillReceiveProps) {
@@ -220,50 +211,15 @@ THE SOFTWARE.
               }
             }
             
-            // TODO: Do not duplicate methods to every object. Need a less memory intensive way to decorate
-            // Shoe
-            component.addAnimation = owner.addAnimation.bind(owner);
-            component.animationNamed = owner.animationNamed.bind(owner);
-            component.removeAnimation = owner.removeAnimation.bind(owner);
-            component.removeAllAnimations = owner.removeAllAnimations.bind(owner);
-            Object.defineProperty(component, "animations", {
-              get: function() {
-                return owner.animations;
-              },
-              enumerable: false,
-              configurable: false
-            });
-            Object.defineProperty(component, "animationNames", {
-              get: function() {
-                return owner.animationNames;
-              },
-              enumerable: false,
-              configurable: false
-            });
-            Object.defineProperty(component, "presentationLayer", {
-              get: function() {
-                return owner.presentationLayer;
-              },
-              enumerable: false,
-              configurable: false
-            });
-            Object.defineProperty(component, "modelLayer", {
-              get: function() {
-                return owner.modelLayer;
-              },
-              enumerable: false,
-              configurable: false
-            });
+            Pyon.pyonify(component, layer, delegate);
           }
         }
-        
-        output.ref = ref;
+        output.ref = reference;
         return React.createElement(InnerComponent,output);
         //return InnerComponent(output); // ES6 cannot call a class as a function
       }
     });
     var OuterComponent = React.createFactory(OuterComponentClass);
-    //var OuterComponent = React.createElement.bind(null,OuterComponentClass);
     return OuterComponent;
   }
 
@@ -271,7 +227,7 @@ THE SOFTWARE.
     root.PyonReact = previousPyonReact;
     return PyonReact;
   }
-  if (typeof exports !== "undefined") { // http://www.richardrodger.com/2013/09/27/how-to-make-simple-node-js-modules-work-in-the-browser/#.VpuIsTZh2Rs
+  if (typeof exports !== "undefined") { // http://www.richardrodger.com/2013/09/27/how-to-make-simple-node-js-modules-work-in-the-browser/
     if (typeof module !== "undefined" && module.exports) exports = module.exports = PyonReact;
     exports.PyonReact = PyonReact;
   } else root.PyonReact = PyonReact;
