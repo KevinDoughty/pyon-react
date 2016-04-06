@@ -150,7 +150,7 @@ THE SOFTWARE.
             var animation = prop.animation;
             if (prop.mount) animation = prop.mount;
             if (animation) {
-              console.log("change descriptions deprecated.");
+              console.warn("change descriptions deprecated.");
               var copy = Object.assign({},animation);
               copy.property = key;
               this.addAnimation(copy); // Shoe
@@ -257,7 +257,7 @@ THE SOFTWARE.
       animationForKey: function(key,value,target) {
         var animationForKey;
         if (childInstance) animationForKey = childInstance.animationForKey;
-        else console.log("PyonReact animateStyle InnerComponent animationForKey no child instance");
+        else throw new Error("PyonReact animateStyle InnerComponent animationForKey no child instance");
         var animation;
         if (isFunction(animationForKey)) animation = animationForKey.call(childInstance,key,value,target);
         return animation;
@@ -266,11 +266,7 @@ THE SOFTWARE.
     var pyonStyleDeclaration = PyonStyle.setDelegate(null, delegate);
     
     var OuterComponentClass = React.createClass({
-      wrappedComponentWillMount: function() {
-        console.log("$$$ PyonReact wrappedWillMount (I don't think this will ever happen)");
-      },
       wrappedComponentDidMount: function() {
-        console.log("$$$ PyonReact wrappedDidMount");
         var props = this.props;
         var style = props.style;
         Pyon.beginTransaction();
@@ -281,7 +277,6 @@ THE SOFTWARE.
         Pyon.commitTransaction();
       },
       wrappedComponentWillReceiveProps: function(props) {
-        console.log("$$$ PyonReact wrappedWillReceiveProps");
         var style = props.style;
         if (!style) return;
         Pyon.beginTransaction();
@@ -293,17 +288,11 @@ THE SOFTWARE.
       },
       processProps: function(props) {
         Pyon.beginTransaction();
-        console.log("animations? %s",JSON.stringify(props.animations));
-                
         Object.keys(props).forEach( function(key) {
           if (key === "animations") {
             var animations = props.animations;
-            console.log("animations?? %s childInstance:%s;",JSON.stringify(animations),childInstance);
-        
             if (childInstance && childInstance.addAnimation && Array.isArray(animations)) {
-              console.log("animations??? %s",JSON.stringify(animations));
               animations.forEach( function(animation) {
-                console.log("animation???? %s",JSON.stringify(animation));
                 childInstance.addAnimation(animation,animation.key); // TODO: figure out if this will work on stateless components
               });
             }
@@ -323,7 +312,6 @@ THE SOFTWARE.
           if (typeof component !== "undefined" && component !== null && component !== childInstance) {
             childInstance = component;
             var element = ReactDOM.findDOMNode(component);
-            console.log("$$$ StyleComponent ref callback instance:%s; childInstance:%s; element:%s;",component,childInstance,element);
             var style = element.style;
             pyonStyleDeclaration._element = element;
             pyonStyleDeclaration._style = style;
