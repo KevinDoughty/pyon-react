@@ -28,8 +28,8 @@ THE SOFTWARE.
   var React = root.React || hasRequire && require("react");
   if (typeof React === "undefined") throw new Error("Pyon React requires React. If you are using script tags React must come first.");
   
-  //var ReactDOM = root.ReactDOM || hasRequire && require("react-dom");
-  //if (typeof ReactDOM === "undefined") throw new Error("Pyon React requires ReactDOM. If you are using script tags React must come first.");
+  var ReactDOM = root.ReactDOM || hasRequire && require("react-dom");
+  if (typeof ReactDOM === "undefined") throw new Error("Pyon React requires ReactDOM. If you are using script tags React must come first.");
   
   
   var Pyon = root.Pyon || hasRequire && require("pyon");
@@ -42,55 +42,55 @@ THE SOFTWARE.
   function isFunction(w) {
     return w && {}.toString.call(w) === "[object Function]";
   }
-  
+
   var PyonReact = root.PyonReact = {};
-  PyonReact.reactify = function(InnerComponent) {
+
+
+
+  PyonReact.animateProps = function(InnerComponent) {
+    var childInstance;
+    var forceUpdate;
+    var animationDict = {};
+    var layer;
+    var delegate = {
+      animationForKey: function(key,value,target) {
+        var animationForKey;
+        if (childInstance) animationForKey = childInstance.animationForKey;
+        else throw new Error("PyonReact animateProps InnerComponent animationForKey no child instance");
+        var animation;
+        if (isFunction(animationForKey)) animation = animationForKey.call(childInstance,key,value,target);
+        return animation;
+      },
+      render: function() { // This render gets called on animation and is not related to React component render
+//         var componentWillReceiveProps;
+//         var componentWillUpdate;
+//         if (childInstance) {
+//           componentWillReceiveProps = childInstance.componentWillReceiveProps;
+//           if (isFunction(componentWillReceiveProps)) childInstance.componentWillReceiveProps = null; // I want to do this but can't because it breaks uses of props animation, e.g. caching previous value in state
+//           componentWillUpdate = childInstance.componentWillUpdate;
+//           if (isFunction(componentWillUpdate)) childInstance.componentWillUpdate = null; // I want to do this but can't because it breaks uses of props animation, e.g. caching previous value in state
+//         }
+        forceUpdate();
+//         if (isFunction(componentWillReceiveProps)) childInstance.componentWillReceiveProps = componentWillReceiveProps.bind(childInstance);
+//         if (isFunction(componentWillUpdate)) childInstance.componentWillUpdate = componentWillUpdate.bind(childInstance);
+      }
+    }
     var OuterComponentClass = React.createClass({
       displayName : "PyonComponent",
       getInitialState : function() {
           return {}
       },
       initialize: function() {
-        this.debugCount = 0;
-        this.childInstance = null;
-        this.debugMounted = false;
-        this.animationDict = {};
-        var owner = this;
-        
-        this.layer = this.propValues(this.props);//{};
-        
-        this.delegate = {
-          animationForKey: function(key,value,target) {
-            var animationForKey;
-            if (owner.childInstance) animationForKey = owner.childInstance.animationForKey.bind(owner.childInstance);
-            var animation;
-            if (isFunction(animationForKey)) animation = animationForKey(key,value,target);
-            return animation;
-          },
-          render: function() { // This render gets called on animation
-            Pyon.beginTransaction({owner: owner}); // FIXME: can be overwritten by manually created transactions. Does not have a problem with batching because not called from a React synthetic event
-            if (this.debugMounted) this.setState({});
-            //else throw new Error ("delegate render but not mounted"); // Happens a lot, because of work done in componentWillMount!
-            Pyon.commitTransaction();
-          }.bind(this),
-        }
-        
-        //Pyon.pyonify(this,this.layer,this.delegate);
-        
+        forceUpdate = this.forceUpdate.bind(this);
+        layer = this.propValues(this.props);
       },
-      shouldComponentUpdate: function(nextProps,nextState) {
-        var result = true;
-        var transaction = Pyon.currentTransaction();
-        var settings;
-        if (transaction) settings = transaction.settings;
-        if (settings && settings.owner && settings.owner !== this) result = false;
-        return result;
-      },
-      
+//       shouldComponentUpdate: function(nextProps,nextState) {
+//         return true; // There is still one render to be trimmed out, but probably not here. An immediate render then a tick.
+//       },
       propValues: function(props) {
         var values = {};
         Object.keys(props).forEach( function(key) {
-          if (key !== "children") { // Opaque. Strip out children, which breaks horribly: Uncaught Invariant Violation: Objects are not valid as a React child (found: object with keys {}). If you meant to render a collection of children, use an array instead or wrap the object using createFragment(object) from the React add-ons. Check the render method
+          if (key !== "children") { // Opaque. Direct children animation (probably) not possible
             var prop = props[key];
             var value = prop;
             var isObject = (prop !== null && typeof prop === "object");
@@ -101,8 +101,16 @@ THE SOFTWARE.
         return values;
       },
       processProps: function(props) {
+        Pyon.beginTransaction();
         Object.keys(props).forEach( function(key) {
-          if (key !== "children") { // Opaque. No animation for children, at least for now: Uncaught Invariant Violation: Objects are not valid as a React child (found: object with keys {}). If you meant to render a collection of children, use an array instead or wrap the object using createFragment(object) from the React add-ons. Check the render method
+          if (key === "animations") {
+            var animations = props.animations;
+            if (childInstance && childInstance.addAnimation && Array.isArray(animations)) {
+              animations.forEach( function(animation) {
+                childInstance.addAnimation(animation,animation.key); // TODO: figure out if this will work on stateless components
+              });
+            }
+          } else if (key !== "children") { // Opaque. Direct children animation (probably) not possible
             var transition;
             var prop = props[key];
             var value = prop;
@@ -113,43 +121,21 @@ THE SOFTWARE.
               if (prop.transition) transition = prop.transition;
             }
             if (typeof transition === "undefined") transition = null;
-            this.animationDict[key] = transition;
+            animationDict[key] = transition;
             
-            //this.registerAnimatableProperty(key); // Shoe
-            if (this.childInstance) this.childInstance.registerAnimatableProperty(key); // Shoe
-            if (this.delegate && this.delegate.registerAnimatableProperty) this.delegate.registerAnimatableProperty(key);
+            if (childInstance) childInstance.registerAnimatableProperty(key); // Shoe
             
             var oldProp = this.props[key];
             var oldValue = oldProp;
             var isObjectOld = (oldProp !== null && typeof oldProp === "object");
             if (isObjectOld && typeof oldProp.value !== "undefined") oldValue = oldProp.value;
-            //var sort;
-            //if (animation) sort = animation.sort;
-            //if (typeof this.layer[key] === "undefined" || (sort && !sort(value,oldValue)) || (!sort && value !== oldValue)) {
-            this.layer[key] = value;
-            //}
+            
+            layer[key] = value;
           }
         }.bind(this));
+        Pyon.commitTransaction();
       },
-      
-      wrappedComponentWillReceiveProps: function(props) {
-        // ensure child component is not given animated values
-        // These are not assigned. You do that in render.
-        var modelLayer = this.modelLayer;
-        var copy = Object.keys(props).reduce( function(a, b) {
-          a[b] = modelLayer[b];
-          if (a[b] === null || typeof a[b] === "undefined") a[b] = props[b];
-          return a;
-        }, {});
-        
-        if (this.childInstance) {
-          var originalWrappedComponentWillReceiveProps = this.originalWrappedComponentWillReceiveProps.bind(this.childInstance);
-          originalWrappedComponentWillReceiveProps(copy);
-        }
-      },
-      
       componentWillReceiveProps: function(props) {
-        if (!this.debugMounted) throw new Error("GET THE HELL OUT OF HERE WITH YOUR BEING NOT MOUNTED");
         this.processProps(props);
       },
       componentWillMount: function() {
@@ -164,64 +150,212 @@ THE SOFTWARE.
             var animation = prop.animation;
             if (prop.mount) animation = prop.mount;
             if (animation) {
-              var copy = Object.keys(animation).reduce(function(a, b) { a[b] = animation[b]; return a;}, {});
-              if (copy) {
-                copy.property = key;
-                this.addAnimation(copy); // Shoe
-              }
+              console.log("change descriptions deprecated.");
+              var copy = Object.assign({},animation);
+              copy.property = key;
+              this.addAnimation(copy); // Shoe
             }
           }
         }.bind(this));
       },
-      componentWillUnmount: function() {
-        this.debugMounted = false;
-      },
-      componentDidMount: function() {
-        this.debugMounted = true;
-      },
-      render: function() { //
-        var modelLayer = this.layer;
-        var presentationLayer = this.delegate.presentationLayer || modelLayer;
-        
+      render: function() {
+        var presentationLayer = delegate.presentationLayer || layer;
         var output = this.propValues(presentationLayer);
-        
         var owner = this;
-        var layer = modelLayer;
-        var delegate = this.delegate;
-        
-        var reference = function(component) { // Might require format: var CarouselPane = React.createFactory(PyonReact.reactify(CarouselPaneClass));
-          if (component && owner.childInstance !== component) {
-            owner.childInstance = component;
-            
-            var autoAnimateRefs = false;
-            if (autoAnimateRefs && PyonStyle) {
-              var refKeys = Object.keys(component.refs);
-              refKeys.forEach( function(item,index) {
-                 var element = component.refs[item];
-                 PyonStyle.setDelegate(element, owner);
-              });
-            }
-
-            var swizzleWillReceive = false;
-            if (swizzleWillReceive) {
-              var originalWillReceiveProps = component.componentWillReceiveProps;
-              if (originalWillReceiveProps) {
-                owner.originalWrappedComponentWillReceiveProps = originalWillReceiveProps.bind(component);
-                component.componentWillReceiveProps = owner.wrappedComponentWillReceiveProps;
-              }
-            }
-            
-            Pyon.pyonify(component, layer, delegate);
+        var reference = function(component) {
+          if (component && childInstance !== component) {
+            childInstance = component;
+            Pyon.pyonify(component, layer, delegate); // FIXME: if childInstance changes, Pyon receiver cannot. You will get errors like cannot redefine property "animations" etc
           }
         }
-        output.ref = reference;
+        output.ref = reference; // TODO: need to handle/restore original ref if it exists
         return React.createElement(InnerComponent,output);
-        //return InnerComponent(output); // ES6 cannot call a class as a function
       }
     });
-    var OuterComponent = React.createFactory(OuterComponentClass);
-    return OuterComponent;
+    return OuterComponentClass;
   }
+
+
+
+  PyonReact.animateState = function(InnerComponent) {
+    var childInstance;
+    var originalWrappedSetState;
+    var layer = {};
+    var delegate = {
+      animationForKey: function(key,value,target) {
+        var animationForKey;
+        if (childInstance) animationForKey = childInstance.animationForKey;
+        else throw new Error("PyonReact animateState InnerComponent animationForKey no child instance");
+        var animation;
+        if (isFunction(animationForKey)) animation = animationForKey.call(childInstance,key,value,target);
+        return animation;
+      },
+      render: function() { // This render gets called on animation and is not related to React component render
+        var componentWillUpdate;
+        if (childInstance) {
+          componentWillUpdate = childInstance.componentWillUpdate;
+          if (isFunction(componentWillUpdate)) childInstance.componentWillUpdate = null; // Yes I am preventing this. Deal. I do not prevent changes from updating children, but maybe I should considering a CA implementation
+        }
+        var presentationLayer = delegate.presentationLayer || layer;
+        originalWrappedSetState(presentationLayer);
+        if (isFunction(componentWillUpdate)) childInstance.componentWillUpdate = componentWillUpdate.bind(childInstance);
+      }
+    }
+    var OuterComponentClass = React.createClass({
+      wrappedSetState: function(state) {
+        // TODO: If there is no returned animation you wil need to manually call setState!
+        // You also need to deal with the double render,
+        // on setState and tick
+        
+        // TODO: You must also handle replaceState
+        
+        //originalWrappedSetState(state);
+        
+        Pyon.beginTransaction();
+        Object.keys(state).forEach( function(key,index) {
+          delegate.registerAnimatableProperty(key);
+          layer[key] = state[key];
+        });
+        Pyon.commitTransaction();
+      },
+      render: function() {
+        var owner = this;
+        var reference = function(component) {
+          if (component && childInstance !== component) {
+            childInstance = component;
+            var setState = component.setState;
+            if (setState) {
+              originalWrappedSetState = setState.bind(component);
+              component.setState = owner.wrappedSetState;
+              Pyon.pyonify(component, layer, delegate);
+              var state = component.state;
+              Pyon.beginTransaction();
+              Object.keys(state).forEach( function(key,index) {
+                layer[key] = state[key];
+                delegate.registerAnimatableProperty(key);
+              });
+              Pyon.commitTransaction();
+            }
+          }
+        }
+        var output = Object.assign({},this.props,{ ref: reference }); // TODO: need to restore original ref
+        return React.createElement(InnerComponent,output);
+      }
+    });
+    return OuterComponentClass;
+  };
+
+
+
+  PyonReact.animateStyle = function(InnerComponent) {
+    var childInstance;
+    var originalWrappedComponentWillMount;
+    var originalWrappedComponentDidMount;
+    var originalWrappedComponentWillReceiveProps;
+    var layer = {};
+    var delegate = {
+      animationForKey: function(key,value,target) {
+        var animationForKey;
+        if (childInstance) animationForKey = childInstance.animationForKey;
+        else console.log("PyonReact animateStyle InnerComponent animationForKey no child instance");
+        var animation;
+        if (isFunction(animationForKey)) animation = animationForKey.call(childInstance,key,value,target);
+        return animation;
+      }
+    };
+    var pyonStyleDeclaration = PyonStyle.setDelegate(null, delegate);
+    
+    var OuterComponentClass = React.createClass({
+      wrappedComponentWillMount: function() {
+        console.log("$$$ PyonReact wrappedWillMount (I don't think this will ever happen)");
+      },
+      wrappedComponentDidMount: function() {
+        console.log("$$$ PyonReact wrappedDidMount");
+        var props = this.props;
+        var style = props.style;
+        Pyon.beginTransaction();
+        Object.keys(style).forEach( function(key,index) {
+          layer[key] = state[key];
+          delegate.registerAnimatableProperty(key);
+        });
+        Pyon.commitTransaction();
+      },
+      wrappedComponentWillReceiveProps: function(props) {
+        console.log("$$$ PyonReact wrappedWillReceiveProps");
+        var style = props.style;
+        if (!style) return;
+        Pyon.beginTransaction();
+        Object.keys(style).forEach( function(key,index) {
+          delegate.registerAnimatableProperty(key);
+          layer[key] = state[key];
+        });
+        Pyon.commitTransaction();
+      },
+      processProps: function(props) {
+        Pyon.beginTransaction();
+        console.log("animations? %s",JSON.stringify(props.animations));
+                
+        Object.keys(props).forEach( function(key) {
+          if (key === "animations") {
+            var animations = props.animations;
+            console.log("animations?? %s childInstance:%s;",JSON.stringify(animations),childInstance);
+        
+            if (childInstance && childInstance.addAnimation && Array.isArray(animations)) {
+              console.log("animations??? %s",JSON.stringify(animations));
+              animations.forEach( function(animation) {
+                console.log("animation???? %s",JSON.stringify(animation));
+                childInstance.addAnimation(animation,animation.key); // TODO: figure out if this will work on stateless components
+              });
+            }
+          }
+        });
+        Pyon.commitTransaction();
+      },
+      componentWillReceiveProps: function(props) {
+        this.processProps(props);
+      },
+      componentWillMount: function() {
+        this.processProps(this.props);
+      },
+      render: function() {
+        var owner = this;
+        var reference = function(component) {
+          if (typeof component !== "undefined" && component !== null && component !== childInstance) {
+            childInstance = component;
+            var element = ReactDOM.findDOMNode(component);
+            console.log("$$$ StyleComponent ref callback instance:%s; childInstance:%s; element:%s;",component,childInstance,element);
+            var style = element.style;
+            pyonStyleDeclaration._element = element;
+            pyonStyleDeclaration._style = style;
+            for (var i = 0; i < style.length; i++) {
+              var property = style[i];
+              pyonStyleDeclaration._surrogateElement.style[property] = style[property];
+            }
+            pyonStyleDeclaration._updateIndices();
+            Object.defineProperty(element, 'style', { // TODO: This is supposed to be in a try-catch for older browsers
+              get: function() { 
+                return pyonStyleDeclaration;
+              },
+              configurable: true,
+              enumerable: true
+            });
+            element.style._pyonInitialized = true;
+          }
+        };
+        var output = Object.assign({},this.props,{ ref: reference }); // TODO: need to restore original ref
+        return React.createElement(InnerComponent,output);
+      }
+    });
+    return OuterComponentClass;
+  };
+
+
+
+//   PyonReact.animateRefs = function(InnerComponent) {
+//     return InnerComponent;
+//   }
+
+
 
   PyonReact.noConflict = function() {
     root.PyonReact = previousPyonReact;
