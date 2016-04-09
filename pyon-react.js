@@ -21,6 +21,12 @@ THE SOFTWARE.
 */
 "use strict";
 (function() {
+
+
+  var BLOCK_PROPS_CHANGE_AND_UPDATE = true;
+
+
+
   var root = this;
   var previousPyon = root.PyonReact;
   var hasRequire = (typeof require !== "undefined");
@@ -48,6 +54,7 @@ THE SOFTWARE.
 
 
   PyonReact.animateProps = function(InnerComponent) {
+    if (typeof window === "undefined") return InnerComponent;
     var childInstance;
     var forceUpdate;
     var animationDict = {};
@@ -62,19 +69,73 @@ THE SOFTWARE.
         return animation;
       },
       render: function() { // This render gets called on animation and is not related to React component render
-//         var componentWillReceiveProps;
-//         var componentWillUpdate;
-//         if (childInstance) {
-//           componentWillReceiveProps = childInstance.componentWillReceiveProps;
-//           if (isFunction(componentWillReceiveProps)) childInstance.componentWillReceiveProps = null; // I want to do this but can't because it breaks uses of props animation, e.g. caching previous value in state
-//           componentWillUpdate = childInstance.componentWillUpdate;
-//           if (isFunction(componentWillUpdate)) childInstance.componentWillUpdate = null; // I want to do this but can't because it breaks uses of props animation, e.g. caching previous value in state
-//         }
+        var componentWillReceiveProps;
+        var componentWillUpdate;
+        var componentDidUpdate;
+        var shouldComponentUpdate;
+        if (BLOCK_PROPS_CHANGE_AND_UPDATE && childInstance) {
+          componentWillReceiveProps = childInstance.componentWillReceiveProps;
+          if (isFunction(componentWillReceiveProps)) childInstance.componentWillReceiveProps = null; // I want to do this but can't because it breaks uses of props animation, e.g. caching previous value in state
+          componentWillUpdate = childInstance.componentWillUpdate;
+          if (isFunction(componentWillUpdate)) childInstance.componentWillUpdate = null; // I want to do this but can't because it breaks uses of props animation, e.g. caching previous value in state
+          componentDidUpdate = childInstance.componentDidUpdate;
+          if (isFunction(componentDidUpdate)) childInstance.componentDidUpdate = null; // I want to do this but can't because it breaks uses of props animation, e.g. caching previous value in state
+          shouldComponentUpdate = childInstance.shouldComponentUpdate;
+          if (isFunction(shouldComponentUpdate)) childInstance.shouldComponentUpdate = null; // I want to do this but can't because it breaks uses of props animation, e.g. caching previous value in state
+        }
         forceUpdate();
-//         if (isFunction(componentWillReceiveProps)) childInstance.componentWillReceiveProps = componentWillReceiveProps.bind(childInstance);
-//         if (isFunction(componentWillUpdate)) childInstance.componentWillUpdate = componentWillUpdate.bind(childInstance);
+        if (isFunction(componentWillReceiveProps)) childInstance.componentWillReceiveProps = componentWillReceiveProps.bind(childInstance);
+        if (isFunction(componentWillUpdate)) childInstance.componentWillUpdate = componentWillUpdate.bind(childInstance);
+        if (isFunction(componentDidUpdate)) childInstance.componentDidUpdate = componentDidUpdate.bind(childInstance);
+        if (isFunction(shouldComponentUpdate)) childInstance.shouldComponentUpdate = shouldComponentUpdate.bind(childInstance);
       }
-    }
+    };
+
+    // Lifecycle method overrides, if BLOCK_PROPS_CHANGE_AND_UPDATE
+    var originalWrappedShouldComponentUpdate;
+    var wrappedShouldComponentUpdate = function(props,state) { // ensure child component is not given animated values
+      var modelLayer = childInstance.modelLayer;
+      var copy = Object.keys(props).reduce( function(a, b) {
+        a[b] = modelLayer[b];
+        if (a[b] === null || typeof a[b] === "undefined") a[b] = props[b];
+        return a;
+      }, {});
+      return originalWrappedShouldComponentUpdate(copy, state);
+    };
+
+    var originalWrappedComponentWillReceiveProps;
+    var wrappedComponentWillReceiveProps = function(props) { // ensure child component is not given animated values
+      var modelLayer = childInstance.modelLayer;
+      var copy = Object.keys(props).reduce( function(a, b) {
+        a[b] = modelLayer[b];
+        if (a[b] === null || typeof a[b] === "undefined") a[b] = props[b];
+        return a;
+      }, {});
+      originalWrappedComponentWillReceiveProps(copy);
+    };
+
+    var originalWrappedComponentWillUpdate;
+    var wrappedComponentWillUpdate = function(props,state) { // ensure child component is not given animated values
+      var modelLayer = childInstance.modelLayer;
+      var copy = Object.keys(props).reduce( function(a, b) {
+        a[b] = modelLayer[b];
+        if (a[b] === null || typeof a[b] === "undefined") a[b] = props[b];
+        return a;
+      }, {});
+      originalWrappedComponentWillUpdate(copy, state);
+    };
+
+    var originalWrappedComponentDidUpdate;
+    var wrappedComponentDidUpdate = function(props,state) { // ensure child component is not given animated values
+      var previousLayer = childInstance.previousLayer;
+      var copy = Object.keys(props).reduce( function(a, b) {
+        a[b] = previousLayer[b];
+        if (a[b] === null || typeof a[b] === "undefined") a[b] = props[b];
+        return a;
+      }, {});
+      originalWrappedComponentDidUpdate(copy, state);
+    };
+
     var OuterComponentClass = React.createClass({
       displayName : "PyonComponent",
       getInitialState : function() {
@@ -165,6 +226,28 @@ THE SOFTWARE.
         var reference = function(component) {
           if (component && childInstance !== component) {
             childInstance = component;
+            if (BLOCK_PROPS_CHANGE_AND_UPDATE) {
+              var originalWillReceiveProps = childInstance.componentWillReceiveProps;
+              if (isFunction(originalWillReceiveProps)) {
+                originalWrappedComponentWillReceiveProps = originalWillReceiveProps.bind(childInstance);
+                childInstance.componentWillReceiveProps = wrappedComponentWillReceiveProps;
+              }
+              var originalWillUpdate = childInstance.componentWillUpdate;
+              if (isFunction(originalWillUpdate)) {
+                originalWrappedComponentWillUpdate = originalWillUpdate.bind(childInstance);
+                childInstance.componentWillUpdate = wrappedComponentWillUpdate;
+              }
+              var originalDidUpdate = childInstance.componentDidUpdate;
+              if (isFunction(originalDidUpdate)) {
+                originalWrappedComponentDidUpdate = originalDidUpdate.bind(childInstance);
+                childInstance.componentDidUpdate = wrappedComponentDidUpdate;
+              }
+              var originalShouldUpdate = childInstance.shouldComponentUpdate;
+              if (isFunction(originalShouldUpdate)) {
+                originalWrappedShouldComponentUpdate = originalShouldUpdate.bind(childInstance);
+                childInstance.shouldComponentUpdate = wrappedShouldComponentUpdate;
+              }
+            }
             Pyon.pyonify(component, layer, delegate); // FIXME: if childInstance changes, Pyon receiver cannot. You will get errors like cannot redefine property "animations" etc
           }
         }
@@ -178,6 +261,7 @@ THE SOFTWARE.
 
 
   PyonReact.animateState = function(InnerComponent) {
+    if (typeof window === "undefined") return InnerComponent;
     var childInstance;
     var originalWrappedSetState;
     var layer = {};
@@ -248,6 +332,7 @@ THE SOFTWARE.
 
 
   PyonReact.animateStyle = function(InnerComponent) {
+    if (typeof window === "undefined") return InnerComponent;
     var childInstance;
     var originalWrappedComponentWillMount;
     var originalWrappedComponentDidMount;
@@ -257,7 +342,7 @@ THE SOFTWARE.
       animationForKey: function(key,value,target) {
         var animationForKey;
         if (childInstance) animationForKey = childInstance.animationForKey;
-        else throw new Error("PyonReact animateStyle InnerComponent animationForKey no child instance");
+        else throw new Error("PyonReact animateStyle InnerComponent animationForKey no child instance"); // If so this is my error not the users. Do not throw in production.
         var animation;
         if (isFunction(animationForKey)) animation = animationForKey.call(childInstance,key,value,target);
         return animation;
@@ -266,26 +351,7 @@ THE SOFTWARE.
     var pyonStyleDeclaration = PyonStyle.setDelegate(null, delegate);
     
     var OuterComponentClass = React.createClass({
-      wrappedComponentDidMount: function() {
-        var props = this.props;
-        var style = props.style;
-        Pyon.beginTransaction();
-        Object.keys(style).forEach( function(key,index) {
-          layer[key] = state[key];
-          delegate.registerAnimatableProperty(key);
-        });
-        Pyon.commitTransaction();
-      },
-      wrappedComponentWillReceiveProps: function(props) {
-        var style = props.style;
-        if (!style) return;
-        Pyon.beginTransaction();
-        Object.keys(style).forEach( function(key,index) {
-          delegate.registerAnimatableProperty(key);
-          layer[key] = state[key];
-        });
-        Pyon.commitTransaction();
-      },
+
       processProps: function(props) {
         Pyon.beginTransaction();
         Object.keys(props).forEach( function(key) {
@@ -310,14 +376,18 @@ THE SOFTWARE.
         var owner = this;
         var reference = function(component) {
           if (typeof component !== "undefined" && component !== null && component !== childInstance) {
+            Pyon.beginTransaction();
             childInstance = component;
             var element = ReactDOM.findDOMNode(component);
             var style = element.style;
+            // TODO: Make the following lines less offensive:
             pyonStyleDeclaration._element = element;
             pyonStyleDeclaration._style = style;
             for (var i = 0; i < style.length; i++) {
               var property = style[i];
-              pyonStyleDeclaration._surrogateElement.style[property] = style[property];
+              var value = style[property];
+              pyonStyleDeclaration._surrogateElement.style[property] = value
+              style[property] = value;
             }
             pyonStyleDeclaration._updateIndices();
             Object.defineProperty(element, 'style', { // TODO: This is supposed to be in a try-catch for older browsers
@@ -328,6 +398,11 @@ THE SOFTWARE.
               enumerable: true
             });
             element.style._pyonInitialized = true;
+            
+            component.addAnimation = function(animation,name) {
+              PyonStyle.addAnimation(element,animation,name);
+            }
+            Pyon.commitTransaction();
           }
         };
         var output = Object.assign({},this.props,{ ref: reference }); // TODO: need to restore original ref
